@@ -1,0 +1,6 @@
+{
+  "name": "Corporate Training Platform",
+  "description": "Enterprise employee training for soft skills and electronic engineering with interactive video modules, assessments, progress tracking, and admin user management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
