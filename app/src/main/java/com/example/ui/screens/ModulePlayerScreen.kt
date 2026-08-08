@@ -81,7 +81,7 @@ fun ModulePlayerScreen(
     var currentProgressSeconds by remember { mutableFloatStateOf(0f) }
     var speedMultiplier by remember { mutableFloatStateOf(1.0f) }
     var selectedTab by remember { mutableIntStateOf(0) } // 0 = Transcript, 1 = Key Takeaways
-    var playerEngine by remember { mutableStateOf("WEBVIEW") } // "WEBVIEW", "NATIVE_VIDEOVIEW", "VISUALIZER"
+    var playerEngine by remember { mutableStateOf("NATIVE_VIDEOVIEW") } // "NATIVE_VIDEOVIEW", "WEBVIEW", "VISUALIZER"
     var overrideVideoUrl by remember { mutableStateOf<String?>(null) }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     var speechWebViewRef by remember { mutableStateOf<WebView?>(null) }
@@ -293,17 +293,17 @@ fun ModulePlayerScreen(
         speakLessonVoice(fullLessonText)
     }
 
-    // Ensure audio focus is requested with transient ducking so video and voice audio streams mix together
+    // Ensure audio focus and media stream volume are configured for video playback
     DisposableEffect(Unit) {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val currentVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        if (currentVol == 0) {
-            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (maxVol * 0.8f).toInt(), 0)
+        if (currentVol == 0 || currentVol < (maxVol * 0.5f)) {
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (maxVol * 0.85f).toInt(), 0)
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
                 .setAudioAttributes(
                     AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -317,7 +317,7 @@ fun ModulePlayerScreen(
             }
         } else {
             @Suppress("DEPRECATION")
-            audioManager.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+            audioManager.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN)
             onDispose {
                 @Suppress("DEPRECATION")
                 audioManager.abandonAudioFocus(null)
@@ -411,13 +411,7 @@ fun ModulePlayerScreen(
                 }
             }
 
-            // Auto-play lesson voice narration along with video playback
-            LaunchedEffect(module) {
-                if (module != null && !isTtsSpeaking) {
-                    delay(800)
-                    speakLessonVoice(fullLessonSpeech)
-                }
-            }
+            // Optional manual voice narration when requested by user
 
             // Hidden background speech WebView for guaranteed WebSpeech API execution across all player modes
             Box(modifier = Modifier.size(1.dp).alpha(0.01f)) {
@@ -722,23 +716,6 @@ fun ModulePlayerScreen(
                                                         function stopWebText() {
                                                             try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch(e){}
                                                         }
-                                                        function playToneSound() {
-                                                            try {
-                                                                var AC = window.AudioContext || window.webkitAudioContext;
-                                                                if (AC) {
-                                                                    var ctx = new AC();
-                                                                    var osc = ctx.createOscillator();
-                                                                    var gain = ctx.createGain();
-                                                                    osc.type = 'sine';
-                                                                    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-                                                                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                                                                    osc.connect(gain);
-                                                                    gain.connect(ctx.destination);
-                                                                    osc.start();
-                                                                    osc.stop(ctx.currentTime + 0.25);
-                                                                }
-                                                            } catch(e){}
-                                                        }
                                                         document.addEventListener('click', unmuteYt);
                                                         document.addEventListener('touchstart', unmuteYt);
                                                     </script>
@@ -759,10 +736,11 @@ fun ModulePlayerScreen(
                                                     </style>
                                                 </head>
                                                 <body>
-                                                    <div id="audioBanner" class="audio-banner" onclick="enableAudio()">🔊 Tap Player for Full Audio</div>
+                                                    <div id="audioBanner" class="audio-banner" onclick="enableAudio()">🔊 Tap Player for Full Sound</div>
                                                     <video id="vid" controls autoplay playsinline loop preload="auto">
                                                         <source src="$activeVideoUrl" type="video/mp4">
                                                         <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" type="video/mp4">
+                                                        <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" type="video/mp4">
                                                         Your browser does not support HTML5 video playback.
                                                     </video>
                                                     <script>
@@ -772,7 +750,12 @@ fun ModulePlayerScreen(
                                                             if (v) {
                                                                 v.muted = false;
                                                                 v.volume = 1.0;
-                                                                v.play().catch(function(e){ console.log(e); });
+                                                                var p = v.play();
+                                                                if (p && p.catch) {
+                                                                    p.catch(function(e) {
+                                                                        console.log(e);
+                                                                    });
+                                                                }
                                                             }
                                                             if (banner) banner.style.display = 'none';
                                                         }
@@ -794,23 +777,6 @@ fun ModulePlayerScreen(
                                                         function stopWebText() {
                                                             try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch(e){}
                                                         }
-                                                        function playToneSound() {
-                                                            try {
-                                                                var AC = window.AudioContext || window.webkitAudioContext;
-                                                                if (AC) {
-                                                                    var ctx = new AC();
-                                                                    var osc = ctx.createOscillator();
-                                                                    var gain = ctx.createGain();
-                                                                    osc.type = 'sine';
-                                                                    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-                                                                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
-                                                                    osc.connect(gain);
-                                                                    gain.connect(ctx.destination);
-                                                                    osc.start();
-                                                                    osc.stop(ctx.currentTime + 0.25);
-                                                                }
-                                                            } catch(e){}
-                                                        }
                                                         document.addEventListener('click', enableAudio);
                                                         document.addEventListener('touchstart', enableAudio);
                                                         window.onload = function() {
@@ -818,11 +784,10 @@ fun ModulePlayerScreen(
                                                                 v.muted = false;
                                                                 v.volume = 1.0;
                                                                 var promise = v.play();
-                                                                if (promise !== undefined) {
-                                                                    promise.then(function() {
-                                                                        if (banner) banner.style.display = 'none';
-                                                                    }).catch(function(error) {
+                                                                if (promise !== undefined && promise.catch) {
+                                                                    promise.catch(function(error) {
                                                                         console.log('Autoplay deferred until touch', error);
+                                                                        if (banner) banner.style.display = 'flex';
                                                                     });
                                                                 }
                                                             }
